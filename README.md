@@ -1,3 +1,34 @@
+Portable OpenSSH with Linux namespace support
+=============================================
+
+Add NamespacePIDFile in sshd_config for enter into namespace of the given process. It is useful to isolate user in a container and can be used as replacement for ChrootDirectory. For example:
+
+```console
+$ cat  << EOF > Dockerfile
+FROM ubuntu:focal
+RUN useradd -m -u $(id -u) $(id -un)
+CMD sleep infinity
+EOF
+$ IMAGE_ID=$(docker build -q .)
+$ CONTAINER_ID=$(docker run -d $IMAGE_ID)
+$ sudo mkdir /run/namespace
+$ docker inspect -f '{{.State.Pid}}' $CONTAINER_ID | sudo tee /run/namespace/$(id -un).pid
+$ sudo tee -a /etc/ssh/sshd_config > /dev/null << EOF
+Match User $(id -un)
+NamespacePIDFile /run/namespace/%u.pid
+EOF
+$ systemctl restart sshd
+$ ssh -l $(id -un) localhost        # using the same host just for test purposes
+```
+
+Voilà! You are inside the container.
+
+For enter in the container, the ``setns`` system call is used to join the same namespace as process given, just like using the ``nsenter`` command:
+
+```console
+$ sudo nsenter -a -t $(cat /run/namespace/$(id -un).pid) su - $(id -un)
+```
+
 # Portable OpenSSH
 
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/openssh.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:openssh)

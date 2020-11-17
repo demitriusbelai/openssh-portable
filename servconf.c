@@ -179,6 +179,7 @@ initialize_server_options(ServerOptions *options)
 	options->permitted_listens = NULL;
 	options->adm_forced_command = NULL;
 	options->chroot_directory = NULL;
+	options->namespace_pidfile = NULL;
 	options->authorized_keys_command = NULL;
 	options->authorized_keys_command_user = NULL;
 	options->revoked_keys_file = NULL;
@@ -482,6 +483,7 @@ fill_default_server_options(ServerOptions *options)
 	CLEAR_ON_NONE(options->authorized_principals_file);
 	CLEAR_ON_NONE(options->adm_forced_command);
 	CLEAR_ON_NONE(options->chroot_directory);
+	CLEAR_ON_NONE(options->namespace_pidfile);
 	CLEAR_ON_NONE(options->routing_domain);
 	CLEAR_ON_NONE(options->host_key_agent);
 	for (i = 0; i < options->num_host_key_files; i++)
@@ -537,6 +539,7 @@ typedef enum {
 	sStreamLocalBindMask, sStreamLocalBindUnlink,
 	sAllowStreamLocalForwarding, sFingerprintHash, sDisableForwarding,
 	sExposeAuthInfo, sRDomain, sPubkeyAuthOptions, sSecurityKeyProvider,
+	sNamespacePidfile,
 	sDeprecated, sIgnore, sUnsupported
 } ServerOpCodes;
 
@@ -669,6 +672,7 @@ static struct {
 	{ "permitlisten", sPermitListen, SSHCFG_ALL },
 	{ "forcecommand", sForceCommand, SSHCFG_ALL },
 	{ "chrootdirectory", sChrootDirectory, SSHCFG_ALL },
+	{ "namespacepidfile", sNamespacePidfile, SSHCFG_ALL },
 	{ "hostcertificate", sHostCertificate, SSHCFG_GLOBAL },
 	{ "revokedkeys", sRevokedKeys, SSHCFG_ALL },
 	{ "trustedusercakeys", sTrustedUserCAKeys, SSHCFG_ALL },
@@ -2172,6 +2176,16 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 			*charptr = xstrdup(arg);
 		break;
 
+	case sNamespacePidfile:
+		charptr = &options->namespace_pidfile;
+		arg = strdelim(&cp);
+		if (!arg || *arg == '\0')
+			fatal("%s line %d: missing file name.",
+			    filename, linenum);
+		if (*activep && *charptr == NULL)
+			*charptr = xstrdup(arg);
+		break;
+
 	case sTrustedUserCAKeys:
 		charptr = &options->trusted_user_ca_keys;
 		goto parse_filename;
@@ -2589,6 +2603,11 @@ copy_set_server_options(ServerOptions *dst, ServerOptions *src, int preauth)
 	if (option_clear_or_none(dst->chroot_directory)) {
 		free(dst->chroot_directory);
 		dst->chroot_directory = NULL;
+	}
+	M_CP_STROPT(namespace_pidfile);
+	if (option_clear_or_none(dst->namespace_pidfile)) {
+		free(dst->namespace_pidfile);
+		dst->namespace_pidfile = NULL;
 	}
 }
 

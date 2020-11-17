@@ -935,6 +935,8 @@ main() { if (NSVersionOfRunTimeLibrary("System") >= (60 << 16))
 	else
 		AC_MSG_RESULT([architecture not supported])
 	fi
+	AC_CHECK_FUNCS([setns], [AC_DEFINE([HAVE_SETNS], [1],
+		[Define if your libraries define setns()])])
 	;;
 mips-sony-bsd|mips-sony-newsos4)
 	AC_DEFINE([NEED_SETPGRP], [1], [Need setpgrp to acquire controlling tty])

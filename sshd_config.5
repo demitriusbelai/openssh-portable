@@ -443,6 +443,11 @@ The default is
 .Cm none ,
 indicating not to
 .Xr chroot 2 .
+.It Cm NamescapePIDFile
+Specifies the PID File of process to enter in all its namespaces (cgroup, user,
+ICP, UTS, network, PID and mount) using
+.Xr setns 2
+system call.
 .It Cm Ciphers
 Specifies the ciphers allowed.
 Multiple ciphers must be comma-separated.

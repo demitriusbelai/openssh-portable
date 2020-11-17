@@ -1303,6 +1303,67 @@ do_nologin(struct passwd *pw)
 	exit(254);
 }
 
+#ifdef HAVE_SETNS
+static void
+do_enter_namespace(const char *pid_path)
+{
+	int fd, ns;
+	char strpid[16], proc_ns[PATH_MAX];
+	int i, pid;
+	struct stat st_self_ns, st_proc_ns;
+	if (access(pid_path, R_OK) != 0) {
+		fatal("namespace pidfile does not exist or is not readeable: %s", pid_path);
+	}
+	if ((fd = open(pid_path, O_RDONLY)) < 0) {
+		close(fd);
+		fatal("Unable to open namespace pidfile: %s", pid_path);
+	}
+	i = read(fd, strpid, sizeof(strpid) - 1);
+	close(fd);
+	if (i <= 0) {
+		fatal("Failed to read namespace pidfile: %s", pid_path);
+	}
+	strpid[i] = '\0';
+	pid = strtol(strpid, NULL, 10);
+	verbose("Enter namespace of pid: %d", pid);
+	if (pid <= 0 || kill(pid, 0) != 0) {
+		fatal("invalid namespace process pid: %d", pid);
+	}
+	snprintf(proc_ns, sizeof(proc_ns), "/proc/%d", pid);
+	if (access(proc_ns, F_OK) != 0) { \
+		fatal("namespace directory does not exist: /proc/%d/ns", pid);
+	}
+#define SETNS(filename, nstype) \
+	do { \
+		snprintf(proc_ns, sizeof(proc_ns), "/proc/%d/ns/" filename, pid); \
+		fd = open("/proc/self/ns/" filename, O_RDONLY); \
+		fstat(fd, &st_self_ns); \
+		close(fd); \
+		if ((ns = open(proc_ns, O_RDONLY)) < 0) { \
+			close(ns); \
+			fatal("unable to open namespace: /proc/%d/ns/" filename, pid); \
+		} \
+		fstat(ns, &st_proc_ns); \
+		if (st_self_ns.st_ino != st_proc_ns.st_ino) { \
+			debug3("%s: setns '%s' " #nstype, __func__, proc_ns); \
+			if (setns(ns, nstype) != 0) { \
+				close(ns); \
+				fatal("unable to join namespace: /proc/%d/ns/" filename, pid); \
+			} \
+			close(ns); \
+		} \
+	} while (0)
+	SETNS("user", CLONE_NEWUSER);
+	SETNS("cgroup", CLONE_NEWCGROUP);
+	SETNS("ipc", CLONE_NEWIPC);
+	SETNS("uts", CLONE_NEWUTS);
+	SETNS("net", CLONE_NEWNET);
+	SETNS("pid", CLONE_NEWPID);
+	SETNS("mnt", CLONE_NEWNS);
+#undef SETNS
+}
+#endif
+
 /*
  * Chroot into a directory after checking it for safety: all path components
  * must be root-owned directories with strict permissions.
@@ -1361,7 +1422,7 @@ safely_chroot(const char *path, uid_t uid)
 void
 do_setusercontext(struct passwd *pw)
 {
-	char uidstr[32], *chroot_path, *tmp;
+	char uidstr[32], *chroot_path, *ns_pidfile, *tmp;
 
 	platform_setusercontext(pw);
 
@@ -1388,6 +1449,24 @@ do_setusercontext(struct passwd *pw)
 #endif
 
 		platform_setusercontext_post_groups(pw);
+
+#ifdef HAVE_SETNS
+		if (!in_chroot && options.namespace_pidfile != NULL &&
+		    strcasecmp(options.namespace_pidfile, "none") != 0) {
+			tmp = tilde_expand_filename(options.namespace_pidfile,
+			    pw->pw_uid);
+			snprintf(uidstr, sizeof(uidstr), "%llu",
+			    (unsigned long long)pw->pw_uid);
+			ns_pidfile = percent_expand(tmp, "h", pw->pw_dir,
+			    "u", pw->pw_name, "U", uidstr, (char *)NULL);
+			do_enter_namespace(ns_pidfile);
+			free(tmp);
+			free(ns_pidfile);
+			free(options.namespace_pidfile);
+			options.namespace_pidfile = NULL;
+			in_chroot = 1;
+		}
+#endif
 
 		if (!in_chroot && options.chroot_directory != NULL &&
 		    strcasecmp(options.chroot_directory, "none") != 0) {

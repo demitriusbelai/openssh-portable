@@ -206,6 +206,7 @@ typedef struct {
 	u_int   num_permitted_listens;
 
 	char   *chroot_directory;
+	char   *namespace_pidfile;
 	char   *revoked_keys_file;
 	char   *trusted_user_ca_keys;
 	char   *authorized_keys_command;
